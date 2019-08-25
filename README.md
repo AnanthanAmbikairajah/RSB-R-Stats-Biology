@@ -8,6 +8,7 @@ Topics covered so far this year (2018-2019):
 * [Install R and R-Studio](https://timotheenivalis.github.io/RSB-R-Stats-Biology/00.Install)
 * [Basics of R language](https://timotheenivalis.github.io/RSB-R-Stats-Biology/01.IntroR)
 * [Statistical inference](https://timotheenivalis.github.io/RSB-R-Stats-Biology/02.IntroStats)
+* [Simple linear regression (on Github only; By Ananthan Ambikairajah)](https://github.com/timotheenivalis/RSB-R-Stats-Biology/tree/master/13.SimpleLinearRegression)
 * [Linear mixed models Part 1 (estimation)](https://timotheenivalis.github.io/RSB-R-Stats-Biology/03.MixedModels)
 * [Linear mixed models Part 2 (tests)](https://timotheenivalis.github.io/RSB-R-Stats-Biology/05.MixedModels2)
 * [Linear mixed models Part 3 (random interactions)](https://timotheenivalis.github.io/RSB-R-Stats-Biology/07.MixedModels3)
@@ -18,11 +19,8 @@ Topics covered so far this year (2018-2019):
 * [Multiple regression and conditional effects](https://timotheenivalis.github.io/RSB-R-Stats-Biology/10.MultipleRegression)
 * [Model selection Part 1](https://timotheenivalis.github.io/RSB-R-Stats-Biology/11.ModelSelection/)
 * [Model selection Part 2](https://timotheenivalis.github.io/RSB-R-Stats-Biology/12.ModelSelection2/)
+* [R Markdown](https://timotheenivalis.github.io/RSB-R-Stats-Biology/14.RMarkdown/)
 
 
-<<<<<<< HEAD
-What other topics would you like covered? Just ask and I will try to make it happen! 
-=======
 What other topics would you like covered? Just ask and I will try to make it happen!
 
->>>>>>> 3ecacb20dd8ae19775abe39cda90335cb5a4de69
