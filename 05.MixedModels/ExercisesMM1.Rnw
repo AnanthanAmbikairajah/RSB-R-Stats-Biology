@@ -1,0 +1,423 @@
+\documentclass[12pt,a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{tikz}
+%\usepackage{silence}
+\usepackage{mdframed}
+%\WarningFilter{mdframed}{You got a bad break}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{listings}
+\usepackage{color}
+\colorlet{exampcol}{blue!10}
+\usepackage{multicol}
+\usepackage{booktabs}
+
+
+\usepackage{tcolorbox}
+
+
+\usepackage{setspace}
+%\doublespacing
+
+\usepackage[noanswer]{exercise}%[noanswer]
+\renewcommand{\ExerciseHeaderTitle}{\quad---\quad \color{orange!70!black}\ExerciseTitle}
+
+
+\usepackage[autostyle, english = american]{csquotes}
+\MakeOuterQuote{"}
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks,
+    citecolor=black,
+    filecolor=black,
+    linkcolor=blue,
+    urlcolor=blue
+}
+
+\title{Linear mixed models part 1}
+\date{\today}
+\author{Timoth\'ee Bonnet, BDSI}
+
+
+\begin{document}
+
+<<echo=FALSE>>=
+options(digits = 4) 
+@
+
+\maketitle
+
+On Friday 03/04/2020 I will be presenting this tutorial live on Zoom. (ask by email/Slack if you do not know how to use Zoom.)
+
+If you have any trouble going through this tutorial then or at a different time you can chat about it on Slack ( rsb-r-stats-biology.slack.com , if you are not a member but would like to be, drop me an email) or email me at \href{mailto:timotheebonnetc@gmail.com}{timotheebonnetc@gmail.com}.
+
+If you do not attend the Zoom meeting but would like to receive credit through the \href{https://wattlecourses.anu.edu.au/enrol/index.php?id=23938}{COS Career Development Framework} program I need you to complete three exercises of your choice. Send me your answers via Slack or email. It does not have to be correct on the first try and you are welcome to get in touch if you are completely stuck. I will provide feedback to help you complete exercises you want to do.
+
+In this tutorial you will learn:
+
+\begin{itemize}
+    \item How unexplained variation in a response variable can compromise statistical inference when that variation is structured.
+    \item How fixed and random effects can correct for structured variation in the response variable.
+    \item How to fit mixed-effects models in R.
+    \item How to choose between fixed and random effects.
+    \item Extract and interpret mixed models output.
+    \item Test for the statistical significance of a random effect.
+\end{itemize}
+
+You will need some data, available at \href{https://github.com/timotheenivalis/RSB-R-Stats-Biology/raw/master/05.MixedModels/Data.zip}{https://github.com/timotheenivalis/RSB-R-Stats-Biology/raw/master/05.MixedModels/Data.zip}. Unzip in your R project directory.
+
+\tableofcontents
+\ListOfExerciseInToc
+\ExerciseLevelInToc{subsubsection}
+
+\clearpage
+
+\section{The dangers of unexplained variation}
+Imagine you have measured how much a plant species is attacked by big herbivores as a function of how many thorns the plant grows on stems. You have collected data in 5 locations and visualise the relationship between herbivory and quantity of thorns (in arbitrary units):
+\begin{center}
+  \includegraphics[width=0.8\textwidth]{figures/graph0-1.pdf}
+\end{center}
+
+It looks like the more a plant has thorns, the more it is eaten. Let's check that by fitting a linear regression.
+
+<<>>=
+thorns <- read.csv(file = "Data/thorndata.csv", header=TRUE)
+str(thorns)
+model_0 <- lm(herbivory ~ thorndensity, data = thorns)
+summary(model_0)
+@
+This model confirms a positive relationship between how much a plant has thorns and how much it is consumed by herbivores; which is counter-intuitive.
+
+The twist is that data were collected in 5 different sites, that our two variables have different mean values in different sites, and that our model is not aware of that. 
+We can see the structure in the data by coloring the points by site:
+\begin{center}
+  \includegraphics[width=0.8\textwidth]{figures/graph1-1.pdf}
+\end{center}
+
+Maybe you remember that in a linear model (such as a linear regression) we assume that the residuals follow a normal distribution without any structure (homoscedasticity, independence\dots).
+It is not easy to see patterns by just ploting the residuals:
+<<fig.height=4>>=
+plot(residuals(model_0))
+@
+
+However, in our case, we have data about the missing variable that structure residuals, so we can see clearly that residuals are distributed with structure:
+<<fig.height=4>>=
+plot(thorns$site, residuals(model_0))
+@
+
+We can correct the problem by fititng site in the mode:
+<<fig.height=4>>=
+
+model_1 <- lm(herbivory ~ thorndensity + site, data = thorns)
+summary(model_1)
+@
+
+Now we see a negative relationship between thorn density and herbivory. 
+
+That model corresponds to the plot below:
+\begin{center}
+  \includegraphics[width=0.8\textwidth]{figures/graph2-1.pdf}
+\end{center}
+We have 5 parallel regression lines, one for each site. Differences in the mean values within each sites are accounted for but we estimate the common slope across all sites.
+
+The residuals of that model are more clearly without pattern:
+<<fig.height=4>>=
+
+plot(residuals(model_1))
+plot(thorns$site, residuals(model_1))
+@
+
+
+Note that in the summary of model\_1 we have 4 parameter estimates we did not really care about: the deviations of four site relative to the fifth site. It does not hurt to have them there, but we are not really interested in them because 1) we did not have questions about how sites vary in herbivory, 2) site is just a grouping factor and differences between sites are probably due to numerous processes we have not measured. Given our ignorance on what makes sites different, the values of site effects are essentially random; we fit site only to get a correct inference but do not learn much from the estimated effects of sites.
+
+\section{Fitting random effects}
+
+Now imagine a larger research setting where you would have collected data in 50 sites for a response variable and a predictor.
+<<echo=FALSE, eval=FALSE>>=
+set.seed(123)
+x <- rnorm(10000, 2, 0.5)
+site <- sample(x = 1:50, size = 10000, replace = TRUE)
+y <- 0.2*x + rnorm(10000, 2, 0.5) + rnorm(50,0, 2)[site]
+dat <- data.frame(predictor=x, response=y,
+          site=paste0("s",site))
+write.csv(dat, file = "Data/biggerdata.csv", row.names = FALSE, quote = FALSE)
+@
+
+Check what happens if we approach the problem as in the thorn example:
+<<eval=TRUE>>=
+biggerdata <- read.csv("Data/biggerdata.csv")
+str(biggerdata)
+bdmodel <- lm(response ~ predictor + site, data = biggerdata)
+@
+<<eval=FALSE>>=
+summary(bdmodel)
+@
+
+You will find it is a bit of a mess. We have 49 parameter estimates for sites, but we do not really care about those effects, they are essentially random to us. It would be more efficient to fit site as a random effect!
+
+To do so, load (and install if needed) the package \texttt{lme4}. 
+<<>>=
+library(lme4)
+@
+Then you can copy paste the model we called bdmodel, and change two things: 1) change \texttt{lm} to \texttt{lmer}; 2) change \texttt{site} to \texttt{(1|site)}:
+
+<<>>=
+bdmmixedmodel <- lmer(response ~ predictor + (1|site), data = biggerdata)
+@
+That's it, you have fitted a mixed effect model: that is, a model with both fixed and random effect. The syntax (1|something) means that the variable "something" is fitted as a random effect, while the variable "predictor" remains a fixed effect. Check the summary of that model:
+<<>>=
+summary(bdmmixedmodel)
+@
+
+Now we see a single fixed effect (apart from the intercetp), that of the variable "predictor". The 49 site effects are not there anymore. Where did they go? In the Random effects section, labeled as "site (Intercept)", and instead of seeing 49 effects, we have 50 effects summarized in a single number, namely the variance in those effects: \Sexpr{as.numeric(VarCorr(bdmmixedmodel))}. There is a second number, Std.Dev. which in this case is  \Sexpr{sqrt(as.numeric(VarCorr(bdmmixedmodel)))}, but that is just the standard deviation, that is, the square-root of the variance.
+
+So Variance and Std.Dev. carry exactly the same information: the amount of difference among sites.
+Below site, there is a row for Residual, again giving both a Variance and a Std.Dev. This quantifies the variance left unexplained within each site, after removing the variance explained by fixed effects and random effects.
+
+
+Time for some practice on your own:
+
+\begin{Exercise}[difficulty=1, title={A mixed model for the thorn data set}]
+\begin{enumerate}
+  \item Load the dataset "thorndata.csv" to fit a linear model of "herbivory" as a function of "thorndensity". What is the estimate for the slope?\\
+  \item Add a random effect for site. How does the estimate for the slope changes?\\
+  \item How much variation is explained by differences among sites? How much variation remains unexplained within sites?
+\end{enumerate}
+\end{Exercise}
+
+\begin{Answer}
+Part 1.
+<<>>=
+thorns <- read.csv("Data/thorndata.csv")
+lm(herbivory ~ thorndensity, data=thorns)
+@
+The slope is \Sexpr{coef(lm(herbivory ~ thorndensity, data=thorns))[2]}.\\
+
+Part 2.
+<<>>=
+library(lme4)
+summary(lmer(herbivory ~ thorndensity + (1|site), data=thorns))
+@
+The slope is now \Sexpr{coef(lmer(herbivory ~ thorndensity + (1|site), data=thorns))[2]}.\\
+
+Part 3.
+<<eval=FALSE>>=
+summary(lmer(herbivory ~ thorndensity + (1|site), data=thorns))
+as.numeric(VarCorr(lmer(herbivory ~ thorndensity + (1|site), data=thorns))$site)
+@
+The variance explained by block is \Sexpr{as.numeric(VarCorr(lmer(herbivory ~ thorndensity + (1|site), data=thorns))$block)} (careful, if you extract the standard deviation (Std.Dev.) you need to square it to obtain a variance.). There is no measure of uncertainty for the estimate of variance in block. In the \texttt{summmary} the \texttt{Std.Dev.} is simply the square root of \texttt{Variance}.
+\end{Answer}
+
+
+Remember how we went from 49 fixed effect parameters to 1 random effect parameter in the previous example? Doesn't it sound a bit weird? How can we summarize 49 (or 50) numbers in 1. Well, by making one assumption: that these 50 numbers follow a normal distribution, which we define such that its mean is zero. A normal distribution is defined by 2 parameters, the mean and the variance, we fix the mean to zero, so we can describe the distribution with the variance only. 
+Let's visualize that distribution:
+The model was:
+<<>>=
+mm0 <- lmer(response ~ predictor + (1|site), data=biggerdata)
+@
+
+We can extract the random variance for site as:
+<<>>=
+rvar <- as.numeric(VarCorr(mm0)$site)
+@
+
+Knowing that most of a normal distribution is contained within +/- 4 times its standard deviation, we can visualize the density distribution of the random effect:
+<<fig.height=3>>=
+x <- seq(-4*sqrt(rvar),4*sqrt(rvar),sqrt(rvar)/100)
+plot(x=x, y=dnorm(x = x, mean =0 , sd = sqrt(rvar)), type="l", 
+     xlab= "value of random deviation", ylab="probability density", lwd=5)
+@
+
+The actual random deviation for each site are "kind of" estimated and can be extracted with the function \texttt{ranef()}. In our case \texttt{ranef()} will return 50 values. Let's map them onto the previous plot:
+
+<<fig.height=3>>=
+x <- seq(-4*sqrt(rvar),4*sqrt(rvar),sqrt(rvar)/100)
+plot(x=x, y=dnorm(x = x, mean =0 , sd = sqrt(rvar)), type="l", 
+     xlab= "value of random deviation", ylab="probability density", lwd=5)
+abline(v=unlist(ranef(mm0)), col= "red")
+@
+
+OK, it makes some sense, but also does not look perfect. Let's see how well the distribution of random levels fits a normal distribution using a qqplot:
+<<fig.height=3>>=
+
+qqnorm(unlist(ranef(mm0)))
+qqline(unlist(ranef(mm0)), col = 2)
+@
+Not too bad, but with only 50 samples it is not surprising we do not get a perfect fit.
+
+Now, let's visualize the "median" regression line, that is, the line predicted when the random deviaiton is zero, or in other words using only fixed effects and ignoring the random effect. Let's also colour points by site:
+<<fig.height=3>>=
+plot(biggerdata$predictor, biggerdata$response, col=rainbow(50)[biggerdata$site])
+abline(fixef(mm0)[1], fixef(mm0)[2], lwd=5)
+@
+
+Now, let's add one thin regression line for each site, using the output of \texttt{ranef()} to get a sort of estimate of the site deviation:
+<<>>=
+plot(biggerdata$predictor, biggerdata$response, col=rainbow(50)[biggerdata$site])
+abline(fixef(mm0)[1], fixef(mm0)[2], lwd=5)
+
+for (i in 1:50)
+{
+  abline(a = fixef(mm0)[1]+unlist(ranef(mm0))[i],
+         b = fixef(mm0)[2], lwd=1, col=rainbow(50)[i])
+}
+
+x <- seq(-4*sqrt(rvar),4*sqrt(rvar),sqrt(rvar)/100)
+
+dens <- as.matrix(cbind(x,10*dnorm(x = x, mean =0 , sd = sqrt(rvar))))
+dens[,1] <- dens[,1] - mean(dens[,1])
+dens[,2] <- dens[,2] - mean(dens[,2])
+
+# library(spdep)
+# plot(Rotation(dens, -0.99*pi/2))
+# 
+# plot(dens)
+# theta <- -pi/2
+# k <- 1
+# newcoor <- k * dens %*% matrix(c(cos(theta),-sin(theta),sin(theta),cos(theta)), 2, 2)
+# plot(0.5*newcoor[,1], 10*newcoor[,2]+fixef(mm0)[1], lwd=3)
+# 
+theta <- -0.95*pi/2
+k <- 1
+newcoor <- k * dens %*% matrix(c(cos(theta),-sin(theta),sin(theta),cos(theta)), 2, 2)
+lines(newcoor[,1]+2, 1+newcoor[,2]+fixef(mm0)[1], lwd=3)
+@
+
+
+\begin{tcolorbox}[colback=green!5,colframe=green!40!black,title=Fixed or random effect?]
+When you want to include a categorical variable as a predictor in a model you can generally 
+\begin{itemize}
+\item First, if the predictor is a numerical variable (like size, temperature, number of species\dots) you will generally want a fixed effect, because the order and distance between values is likely meaningful. A random effect consider values as random "names" for grouping levels.
+\item In general it does not change inference much. Random effects are slightly more efficient because the differences between grouping levels are assumed to come from a normal distribution, instead of being estimated independently from each other. 
+\item A slightly lame but practical reason to use random effects: models output are cleaner with random effects because you get a single parameter estimate for a grouping variable modeled as a random effect, instead of a parameter estimate for each level of the grouping variable when modeled with a fixed effect.
+\item Using a random effect instead of a fixed effect shifts the focus from the effect of each grouping level to variation among grouping levels. What is more interesting to you?
+\item Often we use random effect to "correct" for some structure in the data that is not of interest. But random variance parameters can be of interest in themselves. For instance they can quantify genetic variation, individual repeatability, niche specialisation\dots if a variance parameter is of interest then estimate it using a random effect.
+\item On the other hand, if you are very interested in how different a particular grouping level is from other levels, use fixed effects.
+\item Be careful with random effects if the number of grouping levels is small. You definitely need at least 3, probably at least 5, maybe at least 10\dots With few grouping levels the fitting algorithm could have difficulties estimating the random variance, leading to unstable results (you may get different results from different algorithms) or the random variance being estimated to exactly zero.
+\end{itemize}
+\end{tcolorbox}
+
+
+
+\section{Confidence intervals and Tests}
+Sometimes random effects are part of the experimental design and are in the models only to control for confounding effects. But sometimes we care about the value of variance components or we want to report their statistical significance. Let's try a few approaches to evaluate the significance of a random effect. 
+
+
+\begin{Exercise}[difficulty=1, title={CI for variance components in lme4}]
+Use the function \texttt{confint} to estimate confidence intervals for the variance component for "site". Hints: 1) by default confint calculate 95\% confidence intervals for all fixed and random effects as well as for the residual standard deviation which is labelled ".sigma"; 2) confint returns standard deviations for random effects, instead of variances. Take the square of a standard deviation to obtain a variance.
+\end{Exercise}
+\begin{Answer}
+<<>>=
+lmm1 <- lmer(herbivory ~ thorndensity + (1|site), data=thorns)
+conf <- confint(lmm1)
+conf[1,]^2
+@
+\end{Answer}
+
+
+\begin{Exercise}[difficulty=1, title={Testing variance components in lme4}]
+Use the function anova to test the statistical significance of the random effect "site" in the thorn dataset. Hint: 1) you need to fit a simple linear model (lm()) without site to serve as a null model against which to compare your mixed model. The function anova() need to compare two models in this case. 2) the order in which you give your models to anova() matters.
+\end{Exercise}
+\begin{Answer}
+<<>>=
+lm0 <- lm(herbivory ~ thorndensity , data=thorns)
+lmm1 <- lmer(herbivory ~ thorndensity + (1|site), data=thorns)
+
+anova(lm0, lmm1)#doesn't work!
+anova(lmm1, lm0)# mixed model must go first!
+@
+The p-value you get is \Sexpr{ anova(lmm1, lm0)$`Pr(>Chisq)`[2]}, however, be aware this is a conservative estimate!
+
+A better option could be to use the RLRsim which performs simulation-based tests which should be more correct when variances are close to zero:
+<<>>=
+library(RLRsim)
+## compare m0 and m1
+exactLRT(lmm1, lm0)
+@
+
+\end{Answer}
+If you have managed to solve this exercise, congrats! What you have done is called a Likelihood Ratio Test (LRT). This is a useful test, but be careful, the models you compare need to be nested, that is, one model is a special case of the other one. In our case the lm() is nested within the lmer() model because in the special case when the variance in the random effect (1|site) is exactly zero the two models are identical.
+Also, be aware that for random effects Likelihood Ratio Tests using anova are generally conservative.
+
+
+
+\begin{tcolorbox}[colback=green!5,colframe=green!40!black,title=How does random effect formula work again?]
+Random effect formula in lme4 and many other R-packages look like (1$|$group).
+
+On the right-hand side of the pipe ($|$) is the variable that groups data points; for instance location, time, species\dots \\
+
+On the left-hand side of the pipe is what varies according to grouping. In today's example we use only $1$, which stands for \textbf{intercept}. In other words we use random-intercept models. You can write other things on the left-hand side to define more complex models ("random interactions", "random regressions",\dots) but we will see that next time.
+
+\end{tcolorbox}
+
+
+
+\begin{Exercise}[difficulty=3, title={Do kangaroos have personalities?}]
+<<echo=FALSE, eval=FALSE>>=
+allm <- read.table("AllM.txt", header = TRUE)
+
+head(allm)
+allm <- allm[,c("id", "Weight", "Tail_Length","Sex", "Year", "Age3", "Xpos", "Ypos", "Mother", "Julian")]
+
+colnames(allm)[2] <- "EscapeDistance"
+write.csv(allm, file = "roo.csv", quote = FALSE, row.names = FALSE)
+
+@
+We want to know whether the distance at which kangaroos run away when we approach is different among individuals. Load the dataset "roo.csv" and fit linear mixed models of "EscapeDistance" to find out. We can quantify how much individuals differ from each other using repeatability. Repeatability can be defined as the ratio of variance among individuals over the sum variance among individuals plus variance within individuals. 
+
+We can estimate the variance among individuals with a random effect of \texttt{id} (individual identifier) and the variance within individuals can be estimated as the residual variance. 
+
+What other variables to include? Does individual repeatability explain more variance than expected by randomly grouping observations? What is the repeatability of behaviour?
+\end{Exercise}
+\begin{Answer}
+<<>>=
+roo <- read.csv("Data/roo.csv")
+@
+
+There is no simple answer to what model you should fit, because it depends what you think is part of intrinsic individual differences and what is not. The simplest model would be:
+<<>>=
+summary(lmer(EscapeDistance ~ 1 + (1|id) + (1|Year), data=roo))
+@
+That's not necessarily wrong, but be aware of what residual and id variance contain here: age, sex, date, location... should they?
+
+The following model is probably too complex:
+<<>>=
+summary(lmer(EscapeDistance ~ 1 + Sex + as.factor(Age3) + (1|id) + (1|Mother) + (1|Year), data=roo))
+@
+indeed, "sex" and "Mother" (identity of an individual's mother) are part of an individual identity. Correcting for those will likely reduce the id variance. However, I think it makes sense to correct for age.
+
+
+Maybe a good model would be:
+<<>>=
+summary(lmer(EscapeDistance ~ 1 + as.factor(Age3) + Julian + (1|Year) + (1|id) , data=roo))
+@
+(but it is not unambiguous; you can disagree).
+
+From there, we can test the statistical significance of repeatability as:
+<<>>=
+lmfull <- lmer(EscapeDistance ~ 1 + as.factor(Age3) + Julian + (1|Year) + (1|id) , data=roo)
+lmreduced <- lmer(EscapeDistance ~ 1 + as.factor(Age3) + Julian + (1|Year) , data=roo)
+anova(lmfull, lmreduced)
+@
+
+and estimate repeatability:
+<<>>=
+as.numeric(VarCorr(lmfull)[1])/(as.numeric(VarCorr(lmfull)[1])+
+                                  as.numeric(VarCorr(lmfull)[2])+
+                                  sigma(lmfull)^2)
+@
+
+\end{Answer}
+
+\section{More resources}
+
+
+\href{http://bbolker.github.io/mixedmodels-misc/glmmFAQ.html}{Ben Bolker's GLMM FAQ is a gold mine if you need some technical details about mixed models (generalized or not).}
+
+If you are going to do lots of mixed models consider subscribing to the mailing-list \href{https://stat.ethz.ch/mailman/listinfo/r-sig-mixed-models}{https://stat.ethz.ch/mailman/listinfo/r-sig-mixed-models}, ask questions or search the archive (anyway, Google is likely to directly send you to the archive).
+
+
+
+\end{document}
